@@ -3,7 +3,6 @@ using BepInEx.Logging;
 using DG.Tweening;
 using HarmonyLib;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
@@ -46,6 +45,20 @@ namespace MiniTower
             else
             {
                 __instance.targetSpeed = 0f;
+            }
+            return true;
+        }
+    }
+
+    // Disable control on landing aircraft.
+    [HarmonyPatch(typeof(Aircraft), "OnPointDown", new Type[] {})]
+    class PatchOnPointDown
+    {
+        static bool Prefix(ref Aircraft __instance)
+        {
+            if (__instance.direction == Aircraft.Direction.Inbound && __instance.speed > 50f)
+            {
+                return false;
             }
             return true;
         }
@@ -136,6 +149,16 @@ namespace MiniTower
         }
     }
 
+    // Disable indicator.
+    [HarmonyPatch(typeof(Aircraft), "Update", new Type[] {})]
+    class PatchAircraftUpdate
+    {
+        static void Postfix(ref Aircraft __instance)
+        {
+            __instance.APStatTri.gameObject.SetActive(false);
+        }
+    }
+
     // Disable go-around.
     [HarmonyPatch]
     public class PatchLandCoroutine
@@ -165,7 +188,9 @@ namespace MiniTower
     }
 
     // You can always land.
-    // [HarmonyPatch(typeof(Aircraft), "GenerateLandingPathL1", new Type[] {typeof(Runway), typeof(List<Vector3>), typeof(bool), typeof(bool)})]
+    // [HarmonyPatch(typeof(Aircraft), "GenerateLandingPathL1", 
+    //     new Type[] {typeof(Runway), typeof(List<Vector3>), typeof(bool), typeof(bool)}, 
+    //     [ArgumentType.Normal, ArgumentType.Out, ArgumentType.Normal, ArgumentType.Normal])]
     // class PatchGenerateLandingPathL1
     // {
     //     static void Postfix(Runway LandingRunway, List<Vector3> path, bool EarlyQuit, bool useExtGuide, ref bool __result)
@@ -173,6 +198,26 @@ namespace MiniTower
     //         __result = true;
     //     }
     // }
+
+    // Stop aircraft from turning into 090 when stopped.
+    [HarmonyPatch(typeof(Aircraft), "GetHeadingHARW", new Type[] {})]
+    class PatchGetHeadingHARWDefault
+    {
+        static bool Prefix(ref Aircraft __instance, ref object[] __state)
+        {
+            __state = new object[] {__instance.speed, __instance.targetSpeed, __instance.heading};
+            return true;
+        }
+
+        static void Postfix(ref Aircraft __instance, ref float __result, ref object[] __state)
+        {
+            if (__state == null || __state.Length != 3 || __instance.targetSpeed != 0)
+            {
+                return;
+            }
+            __result = (float)__state[2];
+        }
+    }
 
     // Fix of NullReferenceException here when an aircraft stopped.
     [HarmonyPatch(typeof(Aircraft), "OnTriggerEnter2D", new Type[] {typeof(Collider2D)})]
@@ -360,6 +405,18 @@ namespace MiniTower
         static void Postfix(ColorCode.Option colorCode, ShapeCode.Option shapeCode, ref bool __result)
         {
             __result = true;
+        }
+    }
+
+    // Do not show directional arrow.
+    [HarmonyPatch(typeof(RestrictedLineIndicator), "Update", new Type[] {})]
+    class PatchRestrictedLineIndicatorUpdate
+    {
+        static bool Prefix(ref RestrictedLineIndicator __instance)
+        {
+            __instance.TArrow.gameObject.SetActive(false);
+            __instance.FArrow.gameObject.SetActive(false);
+            return false;
         }
     }
 }
